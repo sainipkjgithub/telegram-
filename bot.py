@@ -1,89 +1,151 @@
 from flask import Flask, request
-import telebot
 import requests
 import json
 
-# Telegram Bot Token
-TELEGRAM_BOT_TOKEN = '8169493568:AAHgkbPTtukjYrrQDOk8zFrMN7jubQmuqV8'
-bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
-
-# Google App Script URL
-APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyBUVP4SA8hO4zuI2PkORJaAGWILEpGY229mFYPU_NxgTraSvYnAxI8M4mC2vY2ZskjHg/exec"
-
-# PaxSenix API Details
-PAXSENIX_API_URL = "https://api.paxsenix.biz.id/ai/gpt4o"
-PAXSENIX_HEADERS = {
-    'accept': 'application/json',
-    'Content-Type': 'application/json'
-}
-
 app = Flask(__name__)
 
-# Telegram Webhook
-@app.route('/webhook', methods=['POST'])
-def webhook():
-    update = telebot.types.Update.de_json(request.get_data(as_text=True))
-    bot.process_new_updates([update])
-    return "OK", 200
+# Telegram Bot Token
+TELEGRAM_TOKEN = "8169493568:AAHiZ6t3my3vyKSfw00GotWD6vflI2RFqb0"
+TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
-# Fetch history from Google Sheets
-def fetch_user_history(user_id):
-    params = {
-        'action': 'getRow',
-        'col': 2,  # Assuming User ID is in column 2
-        'value': user_id
+# PaxSenix API URLs
+TEXT_API_URL = "https://api.paxsenix.biz.id/ai/gpt4o"
+IMAGE_API_URL = "https://api.paxsenix.biz.id/ai/geminivision"
+
+# Google Apps Script API URL to save chat history
+SAVE_HISTORY_API_URL = "https://script.google.com/macros/s/AKfycbz74t0Aw9DoINW2R2u2AXwB1m-5YqRzPBWE7VE9zAdCNn8nFtuD_ksj_XlCrJNKKNhybQ/exec"
+
+
+def send_typing_action(chat_id):
+    """
+    Sends a single typing action to Telegram.
+    """
+    requests.post(f"{TELEGRAM_API}/sendChatAction", json={"chat_id": chat_id, "action": "typing"})
+
+
+def get_user_history(user_id):
+    """
+    Fetches the user message history from Google Sheets.
+    """
+    response = requests.get(f"{SAVE_HISTORY_API_URL}?userId={user_id}")
+    return response.json()
+
+
+def save_user_history(user_id, full_name, message_history, pending_status="false"):
+    """
+    Saves the updated user message history to Google Sheets.
+    """
+    data = {
+        "User ID": user_id,
+        "Full Name": full_name,
+        "Message History": json.dumps(message_history),
+        "Pending Status": pending_status
     }
-    response = requests.get(APP_SCRIPT_URL, params=params)
-    if response.status_code == 200:
-        data = response.json()
-        return json.loads(data.get('Massage History', '[]'))  # Default to empty list if no history
-    return []
+    response = requests.post(SAVE_HISTORY_API_URL, json=data)
+    return response.json()
 
-# Save updated history to Google Sheets
-def save_user_history(user_id, user_name, history):
-    payload = {
-        'action': 'setValue',
-        'row': 1,  # Replace with logic to find user's row if needed
-        'col': 4,  # Assuming history is stored in column 4
-        'value': json.dumps(history)  # Convert list to string
-    }
-    response = requests.post(APP_SCRIPT_URL, data=payload)
-    return response.status_code == 200
 
-# Process messages
-@bot.message_handler(func=lambda message: True)
-def handle_message(message):
-    user_id = message.chat.id
-    user_name = message.chat.first_name + (" " + message.chat.last_name if message.chat.last_name else "")
-    user_message = message.text
+def process_text_message(chat_id, user_id, user_text):
+    """
+    Processes a text message from the user.
+    """
+    # Send typing action
+    send_typing_action(chat_id)
 
-    # Fetch existing history from Google Sheets
-    history = fetch_user_history(user_id)
+    user_history_response = get_user_history(user_id)
+    user_history = []
 
-    # Append the new user message
-    history.append({"role": "user", "content": user_message})
-
-    # Prepare API request payload
-    payload = {"messages": history}
-    response = requests.post(PAXSENIX_API_URL, headers=PAXSENIX_HEADERS, json=payload)
-
-    if response.status_code == 200:
-        api_response = response.json()
-        bot_reply = api_response.get("message", "Kuch galat ho gaya hai!")
-
-        # Append the assistant's reply to history
-        history.append({"role": "assistant", "content": bot_reply})
-
-        # Save updated history to Google Sheets
-        save_status = save_user_history(user_id, user_name, history)
-
-        # Send the reply back to the user
-        bot.send_message(user_id, bot_reply)
+    if user_history_response.get("success"):
+        # Append the previous history
+        user_history = json.loads(user_history_response["user"]["Message History"])
     else:
-        bot.send_message(user_id, "API se response nahi mila, kripya baad mein koshish karein.")
+        # If no history exists, start a new conversation
+        user_history = []
 
-if __name__ == '__main__':
-    # Set webhook for Telegram
-    bot.remove_webhook()
-    bot.set_webhook(url='https://YOUR_RENDER_URL/webhook')
-    app.run(host='0.0.0.0', port=5000)
+    # Append the user's message to the history
+    user_history.append({"role": "user", "content": user_text})
+
+    # Call PaxSenix Text API
+    response = requests.post(TEXT_API_URL, headers={
+        "accept": "application/json",
+        "Content-Type": "application/json"
+    }, json={"messages": user_history})
+
+    response_message = response.json().get("message", "Unable to process your request.")
+    user_history.append({"role": "assistant", "content": response_message})
+
+    # Send the response back to Telegram
+    requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_message})
+
+    # Save updated history
+    save_user_history(user_id, "Unknown", user_history)
+
+
+def process_image_message(chat_id, user_id, image_caption, image_url):
+    """
+    Processes an image message from the user.
+    """
+    # Send typing action
+    send_typing_action(chat_id)
+
+    # Default caption if none is provided
+    caption = image_caption if image_caption else "Describe This Image"
+
+    # Call PaxSenix Image API
+    response = requests.get(f"{IMAGE_API_URL}?text={caption}&url={image_url}", headers={
+        "accept": "application/json"
+    })
+
+    response_message = response.json().get("message", "Unable to process the image.")
+
+    # Send the response back to Telegram
+    requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_message})
+
+    # Append message to history with 📷 icon
+    user_history_response = get_user_history(user_id)
+    user_history = []
+
+    if user_history_response.get("success"):
+        user_history = json.loads(user_history_response["user"]["Message History"])
+
+    user_history.append({"role": "user", "content": "📷"})
+    user_history.append({"role": "assistant", "content": response_message})
+
+    # Save updated history
+    save_user_history(user_id, "Unknown", user_history)
+
+
+@app.route("/", methods=["POST", "GET"])
+def index():
+    if request.method == "POST":
+        data = request.json
+
+        if "message" in data:  # Check if it's a message
+            chat_id = data["message"]["chat"]["id"]
+            user_id = str(chat_id)  # Using chat_id as user_id for simplicity
+
+            # Handle text message
+            if "text" in data["message"]:
+                user_text = data["message"]["text"]
+                process_text_message(chat_id, user_id, user_text)
+
+            # Handle photo message
+            elif "photo" in data["message"]:
+                photo_file_id = data["message"]["photo"][-1]["file_id"]  # Highest resolution
+                file_response = requests.get(f"{TELEGRAM_API}/getFile?file_id={photo_file_id}")
+                file_path = file_response.json()["result"]["file_path"]
+                file_url = f"https://api.telegram.org/file/bot{TELEGRAM_TOKEN}/{file_path}"
+                caption = data["message"].get("caption", None)
+                process_image_message(chat_id, user_id, caption, file_url)
+
+            # Handle unsupported media
+            else:
+                response_message = "Unable to process your request."
+                requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_message})
+
+        return {"status": "ok"}
+    return "Telegram bot is running!"
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)
