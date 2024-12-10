@@ -31,6 +31,9 @@ def index():
                 requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_text})
 
             elif "photo" in data["message"]:  # Photo message
+                # Check if a caption is provided
+                user_caption = data["message"].get("caption", "Please Describe this Image")
+
                 # Get the file ID of the photo
                 photo_file_id = data["message"]["photo"][-1]["file_id"]  # Get the highest resolution
                 file_response = requests.get(f"{TELEGRAM_API}/getFile?file_id={photo_file_id}")
@@ -38,7 +41,7 @@ def index():
                 file_url = f"https://api.telegram.org/file/bot{TELEGRAM_TOKEN}/{file_path}"
 
                 # Call PaxSenix GeminiVision API
-                image_response = requests.get(f"{IMAGE_API_URL}?text=captions&url={file_url}", headers={
+                image_response = requests.get(f"{IMAGE_API_URL}?text={user_caption}&url={file_url}", headers={
                     "accept": "application/json"
                 })
 
