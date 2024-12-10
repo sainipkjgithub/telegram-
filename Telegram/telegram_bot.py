@@ -13,3 +13,15 @@ def send_telegram_message(user_id, message, telegram_api_url):
     }
     response = requests.post(url, json=payload)
     return response.json()
+
+def send_typing_status(user_id, telegram_api_url):
+    """
+    Send 'typing' status to the user to indicate that the bot is working on a reply.
+    """
+    url = f"{telegram_api_url}/sendChatAction"
+    payload = {
+        "chat_id": user_id,
+        "action": "typing"
+    }
+    response = requests.post(url, json=payload)
+    return response.json()
