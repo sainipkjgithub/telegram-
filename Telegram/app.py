@@ -28,7 +28,7 @@ def get_user_history(user_id):
     """
     response = requests.get(f"{SAVE_HISTORY_API_URL}?userId={user_id}")
     history_data = response.json()
-    return history_data.get("user", {}).get("Message History", [])
+    return history_data.get("user", {}).get("Message History", []), history_data.get("success", False)
 
 def save_user_history(user_id, full_name, message_history, pending_status="false"):
     """
@@ -55,13 +55,19 @@ def index():
             # Start typing status in a separate thread
             threading.Thread(target=send_typing_action, args=(chat_id,)).start()
 
-            # Get user message history
-            user_history = get_user_history(user_id)
+            # Check if user exists or not
+            user_history, user_exists = get_user_history(user_id)
 
             # Handle text message
             if "text" in data["message"]:
                 user_text = data["message"]["text"]
-                user_history.append({"role": "user", "content": user_text})
+
+                if not user_exists:  # If user is new
+                    # Initialize an empty history if user is new
+                    user_history = [{"role": "user", "content": user_text}]
+                else:
+                    # Add the user message to history
+                    user_history.append({"role": "user", "content": user_text})
 
                 # Call PaxSenix GPT-4o API
                 response = requests.post(TEXT_API_URL, headers={
@@ -83,11 +89,8 @@ def index():
             # Handle photo message
             elif "photo" in data["message"]:
                 user_caption = data["message"].get("caption", "Please Describe this Image")
-                
-                # Add image icon to the history
-                user_history.append({"role": "user", "content": "📷"})
 
-                # Get the file ID of the photo
+                # Send image to the PaxSenix GeminiVision API directly without history
                 photo_file_id = data["message"]["photo"][-1]["file_id"]  # Highest resolution
                 file_response = requests.get(f"{TELEGRAM_API}/getFile?file_id={photo_file_id}")
                 file_path = file_response.json()["result"]["file_path"]
@@ -99,6 +102,9 @@ def index():
                 })
 
                 response_text = image_response.json().get("message", "I couldn't process the image.")
+
+                # Add the image icon to history
+                user_history.append({"role": "user", "content": "📷"})
 
                 # Add PaxSenix's reply to history
                 user_history.append({"role": "assistant", "content": response_text})
