@@ -1,6 +1,6 @@
 # app.py
 from flask import Flask, request
-from telegram_bot import send_telegram_message
+from telegram_bot import send_telegram_message, send_typing_status
 from paxsenix_api import call_paxsenix_api
 from google_sheets import save_user_history_to_google, get_user_history_from_google
 from config import TELEGRAM_API, APP_SCRIPT_URL, PAXSENIX_API_URL
@@ -23,6 +23,9 @@ def index():
 
     # New message ko history mein add karein
     user_history.append({"role": "user", "content": user_message, "pending": True})
+
+    # Send typing status before processing the request
+    send_typing_status(user_id, TELEGRAM_API)
 
     # Paxsenix API ko call karein response ke liye
     try:
