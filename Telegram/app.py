@@ -70,7 +70,10 @@ def index():
                 }, json={"messages": user_history})
 
                 response_text = response.json().get("message", "I couldn't process your request.")
-                
+
+                # Add PaxSenix's reply to history
+                user_history.append({"role": "assistant", "content": response_text})
+
                 # Send the response back to Telegram
                 requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_text})
 
@@ -96,7 +99,10 @@ def index():
                 })
 
                 response_text = image_response.json().get("message", "I couldn't process the image.")
-                
+
+                # Add PaxSenix's reply to history
+                user_history.append({"role": "assistant", "content": response_text})
+
                 # Send the response back to Telegram
                 requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_text})
 
