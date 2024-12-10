@@ -1,12 +1,11 @@
 from flask import Flask, request
 import requests
-import threading
 import json
 
 app = Flask(__name__)
 
 # Telegram Bot Token
-TELEGRAM_TOKEN = "8169493568:AAHiZ6t3my3vyKSfw00GotWD6vflI2RFqb0"
+TELEGRAM_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
 TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
 # PaxSenix API URLs
@@ -19,10 +18,9 @@ SAVE_HISTORY_API_URL = "https://script.google.com/macros/s/AKfycbz74t0Aw9DoINW2R
 
 def send_typing_action(chat_id):
     """
-    Sends typing action to Telegram to show typing status.
+    Sends a single typing action to Telegram.
     """
-    while True:
-        requests.post(f"{TELEGRAM_API}/sendChatAction", json={"chat_id": chat_id, "action": "typing"})
+    requests.post(f"{TELEGRAM_API}/sendChatAction", json={"chat_id": chat_id, "action": "typing"})
 
 
 def get_user_history(user_id):
@@ -51,6 +49,9 @@ def process_text_message(chat_id, user_id, user_text):
     """
     Processes a text message from the user.
     """
+    # Send typing action
+    send_typing_action(chat_id)
+
     user_history_response = get_user_history(user_id)
     user_history = []
 
@@ -84,6 +85,9 @@ def process_image_message(chat_id, user_id, image_caption, image_url):
     """
     Processes an image message from the user.
     """
+    # Send typing action
+    send_typing_action(chat_id)
+
     # Default caption if none is provided
     caption = image_caption if image_caption else "Describe This Image"
 
@@ -120,14 +124,9 @@ def index():
             chat_id = data["message"]["chat"]["id"]
             user_id = str(chat_id)  # Using chat_id as user_id for simplicity
 
-            # Start typing status in a separate thread
-            typing_thread = threading.Thread(target=send_typing_action, args=(chat_id,))
-            typing_thread.start()
-
             # Handle text message
             if "text" in data["message"]:
                 user_text = data["message"]["text"]
-                typing_thread.do_run = False  # Stop typing once message is sent
                 process_text_message(chat_id, user_id, user_text)
 
             # Handle photo message
@@ -137,7 +136,6 @@ def index():
                 file_path = file_response.json()["result"]["file_path"]
                 file_url = f"https://api.telegram.org/file/bot{TELEGRAM_TOKEN}/{file_path}"
                 caption = data["message"].get("caption", None)
-                typing_thread.do_run = False  # Stop typing once message is sent
                 process_image_message(chat_id, user_id, caption, file_url)
 
             # Handle unsupported media
