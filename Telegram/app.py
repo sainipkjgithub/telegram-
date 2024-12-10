@@ -16,19 +16,22 @@ IMAGE_API_URL = "https://api.paxsenix.biz.id/ai/geminivision"
 # Google Apps Script API URL to save chat history
 SAVE_HISTORY_API_URL = "https://script.google.com/macros/s/AKfycbz74t0Aw9DoINW2R2u2AXwB1m-5YqRzPBWE7VE9zAdCNn8nFtuD_ksj_XlCrJNKKNhybQ/exec"
 
+
 def send_typing_action(chat_id):
     """
     Sends typing action to Telegram to show typing status.
     """
-    requests.post(f"{TELEGRAM_API}/sendChatAction", json={"chat_id": chat_id, "action": "typing"})
+    while True:
+        requests.post(f"{TELEGRAM_API}/sendChatAction", json={"chat_id": chat_id, "action": "typing"})
+
 
 def get_user_history(user_id):
     """
     Fetches the user message history from Google Sheets.
     """
     response = requests.get(f"{SAVE_HISTORY_API_URL}?userId={user_id}")
-    history_data = response.json()
-    return history_data.get("user", {}).get("Message History", []), history_data.get("success", False)
+    return response.json()
+
 
 def save_user_history(user_id, full_name, message_history, pending_status="false"):
     """
@@ -43,6 +46,71 @@ def save_user_history(user_id, full_name, message_history, pending_status="false
     response = requests.post(SAVE_HISTORY_API_URL, json=data)
     return response.json()
 
+
+def process_text_message(chat_id, user_id, user_text):
+    """
+    Processes a text message from the user.
+    """
+    user_history_response = get_user_history(user_id)
+    user_history = []
+
+    if user_history_response.get("success"):
+        # Append the previous history
+        user_history = json.loads(user_history_response["user"]["Message History"])
+    else:
+        # If no history exists, start a new conversation
+        user_history = []
+
+    # Append the user's message to the history
+    user_history.append({"role": "user", "content": user_text})
+
+    # Call PaxSenix Text API
+    response = requests.post(TEXT_API_URL, headers={
+        "accept": "application/json",
+        "Content-Type": "application/json"
+    }, json={"messages": user_history})
+
+    response_message = response.json().get("message", "Unable to process your request.")
+    user_history.append({"role": "assistant", "content": response_message})
+
+    # Send the response back to Telegram
+    requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_message})
+
+    # Save updated history
+    save_user_history(user_id, "Unknown", user_history)
+
+
+def process_image_message(chat_id, user_id, image_caption, image_url):
+    """
+    Processes an image message from the user.
+    """
+    # Default caption if none is provided
+    caption = image_caption if image_caption else "Describe This Image"
+
+    # Call PaxSenix Image API
+    response = requests.get(f"{IMAGE_API_URL}?text={caption}&url={image_url}", headers={
+        "accept": "application/json"
+    })
+
+    response_message = response.json().get("message", "Unable to process the image.")
+
+    # Send the response back to Telegram
+    requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_message})
+
+    # Append message to history with 📷 icon
+    user_history_response = get_user_history(user_id)
+    user_history = []
+
+    if user_history_response.get("success"):
+        user_history = json.loads(user_history_response["user"]["Message History"])
+
+    user_history.append({"role": "user", "content": "📷"})
+    user_history.append({"role": "assistant", "content": response_message})
+
+    # Save updated history
+    save_user_history(user_id, "Unknown", user_history)
+
+
 @app.route("/", methods=["POST", "GET"])
 def index():
     if request.method == "POST":
@@ -53,72 +121,29 @@ def index():
             user_id = str(chat_id)  # Using chat_id as user_id for simplicity
 
             # Start typing status in a separate thread
-            threading.Thread(target=send_typing_action, args=(chat_id,)).start()
-
-            # Check if user exists or not
-            user_history, user_exists = get_user_history(user_id)
+            typing_thread = threading.Thread(target=send_typing_action, args=(chat_id,))
+            typing_thread.start()
 
             # Handle text message
             if "text" in data["message"]:
                 user_text = data["message"]["text"]
-
-                if not user_exists:  # If user is new
-                    # Initialize an empty history if user is new
-                    user_history = [{"role": "user", "content": user_text}]
-                else:
-                    # Add the user message to history
-                    user_history.append({"role": "user", "content": user_text})
-
-                # Call PaxSenix GPT-4o API
-                response = requests.post(TEXT_API_URL, headers={
-                    "accept": "application/json",
-                    "Content-Type": "application/json"
-                }, json={"messages": user_history})
-
-                response_text = response.json().get("message", "I couldn't process your request.")
-
-                # Add PaxSenix's reply to history
-                user_history.append({"role": "assistant", "content": response_text})
-
-                # Send the response back to Telegram
-                requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_text})
-
-                # Save updated history
-                save_user_history(user_id, "Unknown", user_history)
+                typing_thread.do_run = False  # Stop typing once message is sent
+                process_text_message(chat_id, user_id, user_text)
 
             # Handle photo message
             elif "photo" in data["message"]:
-                user_caption = data["message"].get("caption", "Please Describe this Image")
-
-                # Send image to the PaxSenix GeminiVision API directly without history
                 photo_file_id = data["message"]["photo"][-1]["file_id"]  # Highest resolution
                 file_response = requests.get(f"{TELEGRAM_API}/getFile?file_id={photo_file_id}")
                 file_path = file_response.json()["result"]["file_path"]
                 file_url = f"https://api.telegram.org/file/bot{TELEGRAM_TOKEN}/{file_path}"
-
-                # Call PaxSenix GeminiVision API
-                image_response = requests.get(f"{IMAGE_API_URL}?text={user_caption}&url={file_url}", headers={
-                    "accept": "application/json"
-                })
-
-                response_text = image_response.json().get("message", "I couldn't process the image.")
-
-                # Add the image icon to history
-                user_history.append({"role": "user", "content": "📷"})
-
-                # Add PaxSenix's reply to history
-                user_history.append({"role": "assistant", "content": response_text})
-
-                # Send the response back to Telegram
-                requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_text})
-
-                # Save updated history
-                save_user_history(user_id, "Unknown", user_history)
+                caption = data["message"].get("caption", None)
+                typing_thread.do_run = False  # Stop typing once message is sent
+                process_image_message(chat_id, user_id, caption, file_url)
 
             # Handle unsupported media
             else:
-                response_text = "I am unable to process your request."
-                requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_text})
+                response_message = "Unable to process your request."
+                requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_message})
 
         return {"status": "ok"}
     return "Telegram bot is running!"
