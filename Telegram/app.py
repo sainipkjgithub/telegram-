@@ -9,8 +9,8 @@ TELEGRAM_TOKEN = "7645816977:AAH6kuSygVwuGhPAlvt_4otirHQhxI9wmYw"
 TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
 # Notion API Configuration
-NOTION_API_KEY = "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"  # Replace with your Notion API Key
-NOTION_DATABASE_ID = "15931e04de46804f8c9cd42d7514e4bd"  # Replace with your Notion Database ID
+NOTION_API_KEY = "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"  # Replace with your Notion API Key
+NOTION_DATABASE_ID = "1597280d4cf580869413f6a1e716db4f"  # Replace with your Notion Database ID
 NOTION_HEADERS = {
     "Authorization": f"Bearer {NOTION_API_KEY}",
     "Content-Type": "application/json",
