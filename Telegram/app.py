@@ -30,7 +30,7 @@ def upload_to_channel(file_id, file_name, user_id, action_id):
     )
     message_data = response.json()
     if not message_data.get("ok"):
-        return None
+        return {"error": "Failed to forward file to Telegram channel."}
     
     message_id = message_data["result"]["message_id"]
 
@@ -50,38 +50,7 @@ def upload_to_channel(file_id, file_name, user_id, action_id):
         headers=NOTION_HEADERS,
         json=notion_data
     )
-    return notion_response.status_code == 200
-
-
-# Fetch files uploaded by a specific user from Notion
-def list_files(user_id):
-    query = {
-        "filter": {
-            "property": "User ID",
-            "rich_text": {"equals": str(user_id)}
-        }
-    }
-    response = requests.post(
-        f"https://api.notion.com/v1/databases/{NOTION_DATABASE_ID}/query",
-        headers=NOTION_HEADERS,
-        json=query
-    )
-    data = response.json()
-    files = []
-    for result in data.get("results", []):
-        file_name = result["properties"]["File Name"]["title"][0]["text"]["content"]
-        message_id = result["properties"]["Message ID"]["number"]
-        files.append({"file_name": file_name, "message_id": message_id})
-    return files
-
-
-# Fetch and send a specific file from the private channel to the user
-def fetch_and_send_file(chat_id, message_id):
-    response = requests.post(
-        f"{TELEGRAM_API}/copyMessage",
-        json={"chat_id": chat_id, "from_chat_id": PRIVATE_CHANNEL_ID, "message_id": message_id}
-    )
-    return response.ok
+    return notion_response.json()  # Return the full response from Notion
 
 
 @app.route("/", methods=["POST", "GET"])
@@ -96,35 +65,18 @@ def index():
                 # Inform user to send file
                 response_text = "Please send the file you want to upload."
                 requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_text})
-            
-            elif text == "/list":
-                # List all files for the user
-                files = list_files(chat_id)
-                if files:
-                    response_text = "\n".join([f"{i+1}. {file['file_name']}" for i, file in enumerate(files)])
-                else:
-                    response_text = "No files found."
-                requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_text})
-            
-            elif text.isdigit():
-                # Send specific file based on user's choice
-                files = list_files(chat_id)
-                file_index = int(text) - 1
-                if 0 <= file_index < len(files):
-                    fetch_and_send_file(chat_id, files[file_index]["message_id"])
-                else:
-                    response_text = "Invalid file ID."
-                    requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_text})
         
         elif "document" in data["message"]:
             # Handle file upload
             file_id = data["message"]["document"]["file_id"]
             file_name = data["message"]["document"]["file_name"]
             action_id = "upload_file"
-            if upload_to_channel(file_id, file_name, chat_id, action_id):
-                response_text = "File uploaded successfully!"
-            else:
-                response_text = "Failed to upload file."
+
+            # Upload file to Notion and get the response
+            notion_response = upload_to_channel(file_id, file_name, chat_id, action_id)
+
+            # Send the Notion response back to the user
+            response_text = f"Notion Response:\n{json.dumps(notion_response, indent=2)}"
             requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_text})
 
         return {"status": "ok"}
