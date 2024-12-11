@@ -39,7 +39,7 @@ def upload_to_channel(file_id, file_name, user_id, action_id):
         "parent": {"database_id": NOTION_DATABASE_ID},
         "properties": {
             "User ID": {"rich_text": [{"text": {"content": str(user_id)}}]},
-            "File Name": {"title": [{"text": {"content": file_name}}]},
+            "File Name": {"rich_text": [{"text": {"content": file_name}}]},
             "Message ID": {"number": message_id},
             "File Type": {"rich_text": [{"text": {"content": "document"}}]},
             "Action ID": {"rich_text": [{"text": {"content": action_id}}]}
