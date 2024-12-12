@@ -114,18 +114,34 @@ def upload_to_user_database(file_name, user_id, full_name, message_id):
 
 # Delete file from Notion database and Telegram channel
 def delete_file_from_notion_and_telegram(database_id, message_id):
-    # Delete file from Notion
-    response = requests.post(
+    # Delete file from Notion by archiving the page
+    response = requests.patch(
         f"https://api.notion.com/v1/pages/{database_id}",
         headers=NOTION_HEADERS,
         json={"archived": True}
     )
+    
+    if response.status_code == 200:
+        # Delete file from Telegram channel
+        requests.post(f"{TELEGRAM_API}/deleteMessage", json={
+            "chat_id": PRIVATE_CHANNEL_ID,
+            "message_id": message_id
+        })
 
-    # Delete file from Telegram channel
-    requests.post(f"{TELEGRAM_API}/deleteMessage", json={
-        "chat_id": PRIVATE_CHANNEL_ID,
-        "message_id": message_id
-    })
+
+# Rename file in Notion database
+def rename_file_in_notion(database_id, new_name):
+    # Update the file name in Notion
+    response = requests.patch(
+        f"https://api.notion.com/v1/pages/{database_id}",
+        headers=NOTION_HEADERS,
+        json={
+            "properties": {
+                "File Name": {"rich_text": [{"text": {"content": new_name}}]}
+            }
+        }
+    )
+    return response.status_code == 200
 
 
 @app.route("/", methods=["POST", "GET"])
@@ -161,7 +177,8 @@ def index():
                         files = [
                             {
                                 "name": result["properties"]["File Name"]["rich_text"][0]["text"]["content"],
-                                "msg_id": result["properties"]["Message ID"]["number"]
+                                "msg_id": result["properties"]["Message ID"]["number"],
+                                "database_id": result["id"]
                             }
                             for result in data.get("results", [])
                         ]
@@ -227,27 +244,65 @@ def index():
                 response_text = "Choose an option for this file:"
                 requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_text, "reply_markup": keyboard})
 
-            elif callback_data.startswith("rename_"):
-                message_id = int(callback_data.split("_")[1])
-                response_text = "Provide your new file name or type /cancel to stop."
-                requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_text})
-
             elif callback_data.startswith("delete_"):
                 message_id = int(callback_data.split("_")[1])
 
+                # Confirm deletion
                 confirmation_keyboard = {
                     "inline_keyboard": [
-                        [{"text": "Yes", "callback_data": f"confirm_delete_{message_id}"},
-                         {"text": "No", "callback_data": f"cancel_delete_{message_id}"}]
+                        [{"text": "Yes", "callback_data": f"confirm_delete_{message_id}_yes"},
+                         {"text": "No", "callback_data": f"confirm_delete_{message_id}_no"}]
                     ]
                 }
-                confirmation_text = "Do you really want to delete this file? This file will be permanently deleted and can't be restored."
-                requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": confirmation_text, "reply_markup": confirmation_keyboard})
+                response_text = "Do you really want to delete this file? This will be permanent."
+                requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_text, "reply_markup": confirmation_keyboard})
 
-            return {"status": "ok"}
+            elif callback_data.startswith("confirm_delete_"):
+                parts = callback_data.split("_")
+                message_id = int(parts[1])
+                confirm = parts[2]
 
-    return "Telegram bot is running!"
+                if confirm == "yes":
+                    database_id = get_user_from_master(chat_id)
+                    if database_id:
+                        delete_file_from_notion_and_telegram(database_id, message_id)
+                        response_text = "File deleted successfully!"
+                    else:
+                        response_text = "Error: File not found."
+                else:
+                    response_text = "File deletion canceled."
+
+                requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_text})
+
+            elif callback_data.startswith("rename_"):
+                message_id = int(callback_data.split("_")[1])
+
+                # Prompt for renaming file
+                response_text = "Please send the new name for the file:"
+                requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_text})
+
+                # Handle new name input for file
+                if "text" in data["message"]:
+                    new_name = data["message"]["text"]
+
+                    # Find the corresponding file's database_id
+                    database_id = get_user_from_master(chat_id)
+                    if database_id:
+                        success = rename_file_in_notion(database_id, new_name)
+                        if success:
+                            response_text = f"File renamed to {new_name} successfully!"
+                        else:
+                            response_text = "Error renaming the file. Please try again later."
+                    else:
+                        response_text = "File not found in the database."
+
+                    # Send the response back to the user
+                    requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_text})
+
+        return "OK", 200
+
+    return "Invalid request", 400
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run(debug=True)
