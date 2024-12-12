@@ -135,6 +135,7 @@ def index():
                     database_id = get_user_from_master(chat_id)
                     if not database_id:
                         response_text = "No files found. Use /upload to start uploading files."
+                        requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_text})
                     else:
                         response = requests.post(
                             f"https://api.notion.com/v1/databases/{database_id}/query",
