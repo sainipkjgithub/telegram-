@@ -18,20 +18,49 @@ NOTION_HEADERS = {
     "Notion-Version": "2022-06-28"
 }
 
-user_databases = {}
+PRIVATE_CHANNEL_ID = "-1002308495574"  # Private channel ID
 
-def add_to_master_database(user_id, user_name, database_id):
+
+# Fetch user from master database
+def get_user_from_master(user_id):
+    query_payload = {
+        "filter": {
+            "property": "User ID",
+            "rich_text": {"equals": str(user_id)}
+        }
+    }
+    response = requests.post(
+        f"https://api.notion.com/v1/databases/{MASTER_DATABASE_ID}/query",
+        headers=NOTION_HEADERS,
+        json=query_payload
+    )
+    data = response.json()
+    if data.get("results"):
+        user_entry = data["results"][0]
+        database_id = user_entry["properties"]["Database ID"]["rich_text"][0]["text"]["content"]
+        return database_id
+    return None
+
+
+# Add user record to master database
+def add_to_master_database(user_id, full_name, database_id):
     payload = {
         "parent": {"database_id": MASTER_DATABASE_ID},
         "properties": {
             "User ID": {"rich_text": [{"text": {"content": str(user_id)}}]},
-            "User Name": {"rich_text": [{"text": {"content": user_name}}]},
+            "Full Name": {"rich_text": [{"text": {"content": full_name}}]},
             "Database ID": {"rich_text": [{"text": {"content": database_id}}]}
         }
     }
-    requests.post("https://api.notion.com/v1/pages", headers=NOTION_HEADERS, json=payload)
+    requests.post(
+        "https://api.notion.com/v1/pages",
+        headers=NOTION_HEADERS,
+        json=payload
+    )
 
-def create_user_database(user_id, user_name):
+
+# Create a new database for a user in Notion
+def create_user_database(user_id, full_name):
     title = f"User ID - {user_id}"
     payload = {
         "parent": {"type": "page_id", "page_id": Page_Id},
@@ -43,23 +72,31 @@ def create_user_database(user_id, user_name):
             "File Type": {"rich_text": {}}
         }
     }
-    response = requests.post("https://api.notion.com/v1/databases", headers=NOTION_HEADERS, json=payload)
+    response = requests.post(
+        "https://api.notion.com/v1/databases",
+        headers=NOTION_HEADERS,
+        json=payload
+    )
     data = response.json()
     database_id = data.get("id")
 
     if database_id:
-        add_to_master_database(user_id, user_name, database_id)
+        add_to_master_database(user_id, full_name, database_id)
     return database_id
 
-def upload_to_user_database(file_id, file_name, user_id, user_name, message_id):
-    if user_id not in user_databases:
-        database_id = create_user_database(user_id, user_name)
-        if not database_id:
-            return {"error": "Failed to create user-specific database."}
-        user_databases[user_id] = database_id
 
+# Upload file to the user's Notion database
+def upload_to_user_database(file_name, user_id, full_name, message_id):
+    # Check if the user exists and get the database ID
+    database_id = get_user_from_master(user_id)
+
+    # If user doesn't exist, create a new database
+    if not database_id:
+        database_id = create_user_database(user_id, full_name)
+
+    # Save file metadata to the user's database
     notion_data = {
-        "parent": {"database_id": user_databases[user_id]},
+        "parent": {"database_id": database_id},
         "properties": {
             "Name": {"title": [{"text": {"content": file_name}}]},
             "File Name": {"rich_text": [{"text": {"content": file_name}}]},
@@ -68,7 +105,12 @@ def upload_to_user_database(file_id, file_name, user_id, user_name, message_id):
         }
     }
 
-    requests.post("https://api.notion.com/v1/pages", headers=NOTION_HEADERS, json=notion_data)
+    requests.post(
+        "https://api.notion.com/v1/pages",
+        headers=NOTION_HEADERS,
+        json=notion_data
+    )
+
 
 @app.route("/", methods=["POST", "GET"])
 def index():
@@ -76,7 +118,7 @@ def index():
         data = request.json
         if "message" in data:
             chat_id = data["message"]["chat"]["id"]
-            user_name = data["message"]["chat"].get("username", "Unknown")
+            full_name = data["message"]["chat"].get("first_name", "") + " " + data["message"]["chat"].get("last_name", "")
 
             if "text" in data["message"]:
                 text = data["message"]["text"]
@@ -90,10 +132,14 @@ def index():
                     requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_text})
 
                 elif text == "/list":
-                    if chat_id not in user_databases:
+                    database_id = get_user_from_master(chat_id)
+                    if not database_id:
                         response_text = "No files found. Use /upload to start uploading files."
                     else:
-                        response = requests.post(f"https://api.notion.com/v1/databases/{user_databases[chat_id]}/query", headers=NOTION_HEADERS)
+                        response = requests.post(
+                            f"https://api.notion.com/v1/databases/{database_id}/query",
+                            headers=NOTION_HEADERS
+                        )
                         data = response.json()
                         files = [
                             {
@@ -122,7 +168,7 @@ def index():
                     file_name = "video.mp4"
 
                 forward_response = requests.post(f"{TELEGRAM_API}/forwardMessage", json={
-                    "chat_id": "-1002308495574",  # Private channel ID
+                    "chat_id": PRIVATE_CHANNEL_ID,
                     "from_chat_id": chat_id,
                     "message_id": data["message"]["message_id"]
                 })
@@ -130,7 +176,7 @@ def index():
                 forward_data = forward_response.json()
                 message_id = forward_data["result"]["message_id"]
 
-                upload_to_user_database(file_id, file_name, chat_id, user_name, message_id)
+                upload_to_user_database(file_name, chat_id, full_name, message_id)
                 response_text = "File uploaded successfully!"
                 requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_text})
 
@@ -138,15 +184,15 @@ def index():
             callback_data = data["callback_query"]["data"]
             chat_id = data["callback_query"]["from"]["id"]
 
-            # Fetch the file from the channel using the message ID
             requests.post(f"{TELEGRAM_API}/copyMessage", json={
                 "chat_id": chat_id,
-                "from_chat_id": "-1002308495574",
+                "from_chat_id": PRIVATE_CHANNEL_ID,
                 "message_id": int(callback_data)
             })
 
         return {"status": "ok"}
     return "Telegram bot is running!"
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
