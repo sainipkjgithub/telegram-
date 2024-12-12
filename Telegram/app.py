@@ -20,8 +20,6 @@ NOTION_HEADERS = {
 
 PRIVATE_CHANNEL_ID = "-1002308495574"  # Private channel ID
 
-pending_deletions = {}  # Tracks users who initiated account deletion
-
 
 # Fetch user from master database
 def get_user_from_master(user_id):
@@ -39,24 +37,79 @@ def get_user_from_master(user_id):
     data = response.json()
     if data.get("results"):
         user_entry = data["results"][0]
-        user_page_id = user_entry["id"]
         database_id = user_entry["properties"]["Database ID"]["rich_text"][0]["text"]["content"]
-        return {"database_id": database_id, "page_id": user_page_id}
+        return database_id
     return None
 
 
-# Delete a user's database from Notion
-def delete_user_database(database_id):
-    delete_url = f"https://api.notion.com/v1/databases/{database_id}"
-    response = requests.delete(delete_url, headers=NOTION_HEADERS)
-    return response.status_code == 200  # Return True if deletion succeeded
+# Add user record to master database
+def add_to_master_database(user_id, full_name, database_id):
+    payload = {
+        "parent": {"database_id": MASTER_DATABASE_ID},
+        "properties": {
+            "User ID": {"rich_text": [{"text": {"content": str(user_id)}}]},
+            "Full Name": {"rich_text": [{"text": {"content": full_name}}]},
+            "Database ID": {"rich_text": [{"text": {"content": database_id}}]}
+        }
+    }
+    requests.post(
+        "https://api.notion.com/v1/pages",
+        headers=NOTION_HEADERS,
+        json=payload
+    )
 
 
-# Delete user record from the master database
-def delete_user_from_master(page_id):
-    delete_url = f"https://api.notion.com/v1/pages/{page_id}"
-    response = requests.delete(delete_url, headers=NOTION_HEADERS)
-    return response.status_code == 200  # Return True if deletion succeeded
+# Create a new database for a user in Notion
+def create_user_database(user_id, full_name):
+    title = f"User ID - {user_id}"
+    payload = {
+        "parent": {"type": "page_id", "page_id": Page_Id},
+        "title": [{"type": "text", "text": {"content": title}}],
+        "properties": {
+            "Name": {"title": {}},
+            "File Name": {"rich_text": {}},
+            "Message ID": {"number": {}},
+            "File Type": {"rich_text": {}}
+        }
+    }
+    response = requests.post(
+        "https://api.notion.com/v1/databases",
+        headers=NOTION_HEADERS,
+        json=payload
+    )
+    data = response.json()
+    database_id = data.get("id")
+
+    if database_id:
+        add_to_master_database(user_id, full_name, database_id)
+    return database_id
+
+
+# Upload file to the user's Notion database
+def upload_to_user_database(file_name, user_id, full_name, message_id):
+    # Check if the user exists and get the database ID
+    database_id = get_user_from_master(user_id)
+
+    # If user doesn't exist, create a new database
+    if not database_id:
+        database_id = create_user_database(user_id, full_name)
+
+    # Save file metadata to the user's database
+    notion_data = {
+        "parent": {"database_id": database_id},
+        "properties": {
+            "Name": {"title": [{"text": {"content": file_name}}]},
+            "File Name": {"rich_text": [{"text": {"content": file_name}}]},
+            "Message ID": {"number": message_id},
+            "File Type": {"rich_text": [{"text": {"content": "document"}}]}
+        }
+    }
+
+    requests.post(
+        "https://api.notion.com/v1/pages",
+        headers=NOTION_HEADERS,
+        json=notion_data
+    )
 
 
 @app.route("/", methods=["POST", "GET"])
@@ -65,45 +118,77 @@ def index():
         data = request.json
         if "message" in data:
             chat_id = data["message"]["chat"]["id"]
-            user_message = data["message"]["text"]
+            full_name = data["message"]["chat"].get("first_name", "") + " " + data["message"]["chat"].get("last_name", "")
 
-            if user_message == "/deleteAccount":
-                # Step 1: Send confirmation message
-                pending_deletions[chat_id] = True
-                response_text = (
-                    "Are you sure you want to delete your account?\n"
-                    "If yes, please reply with: YES DELETE MY ACCOUNT\n"
-                    "**This action cannot be undone.**"
-                )
-                requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_text})
+            if "text" in data["message"]:
+                text = data["message"]["text"]
 
-            elif user_message == "YES DELETE MY ACCOUNT" and chat_id in pending_deletions:
-                # Step 2: Confirm deletion and delete data
-                user_data = get_user_from_master(chat_id)
-                if user_data:
-                    database_id = user_data["database_id"]
-                    page_id = user_data["page_id"]
+                if text == "/start":
+                    response_text = "Hello! Use /upload to upload a file and /list to see your uploaded files."
+                    requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_text})
 
-                    # Delete user database
-                    db_deleted = delete_user_database(database_id)
-                    # Delete from master database
-                    master_deleted = delete_user_from_master(page_id)
+                elif text == "/upload":
+                    response_text = "Please send the file you want to upload."
+                    requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_text})
 
-                    if db_deleted and master_deleted:
-                        response_text = "Your account has been successfully deleted."
+                elif text == "/list":
+                    database_id = get_user_from_master(chat_id)
+                    if not database_id:
+                        response_text = "No files found. Use /upload to start uploading files."
                     else:
-                        response_text = "Failed to delete your account. Please try again later."
-                else:
-                    response_text = "No account found to delete."
+                        response = requests.post(
+                            f"https://api.notion.com/v1/databases/{database_id}/query",
+                            headers=NOTION_HEADERS
+                        )
+                        data = response.json()
+                        files = [
+                            {
+                                "name": result["properties"]["File Name"]["rich_text"][0]["text"]["content"],
+                                "msg_id": result["properties"]["Message ID"]["number"]
+                            }
+                            for result in data.get("results", [])
+                        ]
+                        keyboard = {
+                            "inline_keyboard": [
+                                [{"text": file["name"], "callback_data": str(file["msg_id"])}] for file in files
+                            ]
+                        }
+                        response_text = "Select a file to download:"
+                        requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_text, "reply_markup": keyboard})
 
-                # Clear pending deletion for the user
-                pending_deletions.pop(chat_id, None)
+            elif "document" in data["message"] or "photo" in data["message"] or "video" in data["message"]:
+                if "document" in data["message"]:
+                    file_id = data["message"]["document"]["file_id"]
+                    file_name = data["message"]["document"]["file_name"]
+                elif "photo" in data["message"]:
+                    file_id = data["message"]["photo"][-1]["file_id"]
+                    file_name = "photo.jpg"
+                elif "video" in data["message"]:
+                    file_id = data["message"]["video"]["file_id"]
+                    file_name = "video.mp4"
+
+                forward_response = requests.post(f"{TELEGRAM_API}/forwardMessage", json={
+                    "chat_id": PRIVATE_CHANNEL_ID,
+                    "from_chat_id": chat_id,
+                    "message_id": data["message"]["message_id"]
+                })
+
+                forward_data = forward_response.json()
+                message_id = forward_data["result"]["message_id"]
+
+                upload_to_user_database(file_name, chat_id, full_name, message_id)
+                response_text = "File uploaded successfully!"
                 requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_text})
 
-            elif user_message == "YES DELETE MY ACCOUNT":
-                # Step 3: Handle invalid state (if no pending deletion exists)
-                response_text = "You haven't initiated an account deletion request. Send /deleteAccount to start."
-                requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_text})
+        elif "callback_query" in data:
+            callback_data = data["callback_query"]["data"]
+            chat_id = data["callback_query"]["from"]["id"]
+
+            requests.post(f"{TELEGRAM_API}/copyMessage", json={
+                "chat_id": chat_id,
+                "from_chat_id": PRIVATE_CHANNEL_ID,
+                "message_id": int(callback_data)
+            })
 
         return {"status": "ok"}
     return "Telegram bot is running!"
