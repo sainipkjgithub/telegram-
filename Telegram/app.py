@@ -10,6 +10,7 @@ TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
 # Notion API Configuration
 NOTION_API_KEY = "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"  # Replace with your Notion API Key
+Page_Id = "1597280d4cf580a48094c9959f837f09"
 MASTER_DATABASE_ID = "1597280d4cf580869413f6a1e716db4f"  # Master Database ID in Notion
 NOTION_HEADERS = {
     "Authorization": f"Bearer {NOTION_API_KEY}",
@@ -42,7 +43,7 @@ def add_to_master_database(user_id, user_name, database_id):
 def create_user_database(user_id, user_name):
     title = f"User ID - {user_id}"
     payload = {
-        "parent": {"type": "page_id", "page_id": MASTER_DATABASE_ID},
+        "parent": {"type": "page_id", "page_id": Page_Id},
         "title": [{"type": "text", "text": {"content": title}}],
         "properties": {
             "Name": {"title": {}},
