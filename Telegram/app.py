@@ -9,7 +9,7 @@ TELEGRAM_TOKEN = "7645816977:AAH6kuSygVwuGhPAlvt_4otirHQhxI9wmYw"
 TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
 # Notion API Configuration
-NOTION_API_KEY = "YOUR_NOTION_API_KEY"  # Replace with your Notion API Key
+NOTION_API_KEY = "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"  # Replace with your Notion API Key
 NOTION_PAGE_ID = "1597280d4cf580a48094c9959f837f09"  # Parent page ID in Notion
 NOTION_HEADERS = {
     "Authorization": f"Bearer {NOTION_API_KEY}",
