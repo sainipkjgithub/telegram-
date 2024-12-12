@@ -105,7 +105,7 @@ def index():
                             [{"text": file, "callback_data": file}] for file in files
                         ]
                     }
-                    response_text = "Select a file to download:"
+                    response_text = f"Select a file to download:{files}"
                     requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_text, "reply_markup": keyboard})
 
         elif "document" in data["message"] or "photo" in data["message"] or "video" in data["message"]:
@@ -141,11 +141,11 @@ def callback():
     data = request.json
     callback_data = data["callback_query"]["data"]
     message_id = data["callback_query"]["message"]["message_id"]
-
+#####Chaking Status
     # Get the file info from Notion using the message ID and send the file to the user
     response = requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", json={
         "chat_id": data["callback_query"]["from"]["id"],
-        "text": f"Fetching file {callback_data} for you..."
+        "text": f"Fetching file {callback_data} for you...{data}"
     })
 
     # Forward the file from the channel
