@@ -47,7 +47,7 @@ def add_to_master_database(user_id, full_name, database_id):
     payload = {
         "parent": {"database_id": MASTER_DATABASE_ID},
         "properties": {
-            "User ID": {"title": {}},
+            "User ID": {"title": [{"text": {"content": str(user_id)}}]},
             "Full Name": {"rich_text": [{"text": {"content": full_name}}]},
             "Database ID": {"rich_text": [{"text": {"content": database_id}}]}
         }
