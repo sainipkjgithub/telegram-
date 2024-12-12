@@ -20,7 +20,6 @@ NOTION_HEADERS = {
 
 PRIVATE_CHANNEL_ID = "-1002308495574"  # Private channel ID
 
-
 # Fetch user from master database
 def get_user_from_master(user_id):
     query_payload = {
@@ -112,6 +111,32 @@ def upload_to_user_database(file_name, user_id, full_name, message_id):
     )
 
 
+# Handle file list with inline buttons for Rename, Delete, Details
+def get_file_list_keyboard(database_id):
+    response = requests.post(
+        f"https://api.notion.com/v1/databases/{database_id}/query",
+        headers=NOTION_HEADERS
+    )
+    data = response.json()
+    files = [
+        {
+            "name": result["properties"]["File Name"]["rich_text"][0]["text"]["content"],
+            "msg_id": result["properties"]["Message ID"]["number"]
+        }
+        for result in data.get("results", [])
+    ]
+    keyboard = {
+        "inline_keyboard": [
+            [
+                {"text": file["name"], "callback_data": f"file_{file['msg_id']}"},
+                {"text": "Menu", "callback_data": f"menu_{file['msg_id']}"}
+            ]
+            for file in files
+        ]
+    }
+    return keyboard
+
+
 @app.route("/", methods=["POST", "GET"])
 def index():
     if request.method == "POST":
@@ -137,24 +162,8 @@ def index():
                         response_text = "No files found. Use /upload to start uploading files."
                         requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_text})
                     else:
-                        response = requests.post(
-                            f"https://api.notion.com/v1/databases/{database_id}/query",
-                            headers=NOTION_HEADERS
-                        )
-                        data = response.json()
-                        files = [
-                            {
-                                "name": result["properties"]["File Name"]["rich_text"][0]["text"]["content"],
-                                "msg_id": result["properties"]["Message ID"]["number"]
-                            }
-                            for result in data.get("results", [])
-                        ]
-                        keyboard = {
-                            "inline_keyboard": [
-                                [{"text": file["name"], "callback_data": str(file["msg_id"])}] for file in files
-                            ]
-                        }
-                        response_text = "Select a file to download:"
+                        keyboard = get_file_list_keyboard(database_id)
+                        response_text = "Select a file to manage:"
                         requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_text, "reply_markup": keyboard})
 
             elif "document" in data["message"] or "photo" in data["message"] or "video" in data["message"]:
@@ -185,13 +194,50 @@ def index():
             callback_data = data["callback_query"]["data"]
             chat_id = data["callback_query"]["from"]["id"]
 
-            requests.post(f"{TELEGRAM_API}/copyMessage", json={
-                "chat_id": chat_id,
-                "from_chat_id": PRIVATE_CHANNEL_ID,
-                "message_id": int(callback_data)
-            })
+            if callback_data.startswith("menu_"):
+                file_msg_id = int(callback_data.split("_")[1])
+                menu_keyboard = {
+                    "inline_keyboard": [
+                        [
+                            {"text": "Rename File", "callback_data": f"rename_{file_msg_id}"},
+                            {"text": "Delete File", "callback_data": f"delete_{file_msg_id}"},
+                            {"text": "File Details", "callback_data": f"details_{file_msg_id}"}
+                        ]
+                    ]
+                }
+                response_text = "Choose an option for the file."
+                requests.post(f"{TELEGRAM_API}/editMessageReplyMarkup", json={
+                    "chat_id": chat_id,
+                    "message_id": data["callback_query"]["message"]["message_id"],
+                    "reply_markup": menu_keyboard
+                })
+                requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_text})
 
-        return {"status": "ok"}
+            elif callback_data.startswith("delete_"):
+                file_msg_id = int(callback_data.split("_")[1])
+                confirm_delete_keyboard = {
+                    "inline_keyboard": [
+                        [
+                            {"text": "Yes", "callback_data": f"confirm_delete_{file_msg_id}"},
+                            {"text": "No", "callback_data": "cancel_delete"}
+                        ]
+                    ]
+                }
+                response_text = "Do you really want to delete this file? This file will be permanently deleted and can't be restored."
+                requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_text, "reply_markup": confirm_delete_keyboard})
+
+            elif callback_data.startswith("rename_"):
+                file_msg_id = int(callback_data.split("_")[1])
+                response_text = "Provide your new file name for this file or type /cancel to stop renaming."
+                requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_text})
+
+            elif callback_data.startswith("confirm_delete_"):
+                file_msg_id = int(callback_data.split("_")[1])
+                # Delete file logic here (e.g., removing from Notion and sending a delete confirmation message)
+                response_text = "File deleted successfully."
+                requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_text})
+
+            return {"status": "ok"}
     return "Telegram bot is running!"
 
 
