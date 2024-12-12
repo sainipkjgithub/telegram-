@@ -22,7 +22,7 @@ def index():
                 text = data["message"]["text"]
 
                 if text == "/start":
-                    response_text = "Hello! Use /upload to upload a file and /list to see your uploaded files."
+                    response_text = "Hello!🤩😍 Use /upload to upload a file and /list to see your uploaded files."
                     requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_text})
 
                 elif text == "/upload":
