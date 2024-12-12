@@ -26,7 +26,7 @@ def get_user_from_master(user_id):
     query_payload = {
         "filter": {
             "property": "User ID",
-            "rich_text": {"equals": str(user_id)}
+            "title": {"equals": str(user_id)}
         }
     }
     response = requests.post(
