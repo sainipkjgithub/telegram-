@@ -54,6 +54,9 @@ def index():
                         }
                         response_text = "Select a file to download:"
                         requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_text, "reply_markup": keyboard})
+                else:
+                    res = "Please Provide A Valid Command user /start , /upload , /list ." 
+                    requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": res})
 
             elif "document" in data["message"] or "photo" in data["message"] or "video" in data["message"]:
                 if "document" in data["message"]:
