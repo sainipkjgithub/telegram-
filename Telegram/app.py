@@ -9,8 +9,8 @@ TELEGRAM_TOKEN = "7645816977:AAH6kuSygVwuGhPAlvt_4otirHQhxI9wmYw"
 TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
 # Notion API Configuration
-NOTION_API_KEY = "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"  # Replace with your Notion API Key
-NOTION_PAGE_ID = "1597280d4cf580a48094c9959f837f09"  # Parent page ID in Notion
+NOTION_API_KEY = "YOUR_NOTION_API_KEY"  # Replace with your Notion API Key
+MASTER_DATABASE_ID = "1597280d4cf580869413f6a1e716db4f"  # Master Database ID in Notion
 NOTION_HEADERS = {
     "Authorization": f"Bearer {NOTION_API_KEY}",
     "Content-Type": "application/json",
@@ -20,11 +20,29 @@ NOTION_HEADERS = {
 user_databases = {}  # Dictionary to store User ID to Database ID mapping
 
 
+# Add user record to Master Database
+def add_to_master_database(user_id, user_name, database_id):
+    payload = {
+        "parent": {"database_id": MASTER_DATABASE_ID},
+        "properties": {
+            "User ID": {"rich_text": [{"text": {"content": str(user_id)}}]},
+            "User Name": {"rich_text": [{"text": {"content": user_name}}]},
+            "Database ID": {"rich_text": [{"text": {"content": database_id}}]}
+        }
+    }
+    response = requests.post(
+        "https://api.notion.com/v1/pages",
+        headers=NOTION_HEADERS,
+        json=payload
+    )
+    return response.json()  # Return the response
+
+
 # Create a new database for a user in Notion
-def create_user_database(user_id):
+def create_user_database(user_id, user_name):
     title = f"User ID - {user_id}"
     payload = {
-        "parent": {"type": "page_id", "page_id": NOTION_PAGE_ID},
+        "parent": {"type": "page_id", "page_id": MASTER_DATABASE_ID},
         "title": [{"type": "text", "text": {"content": title}}],
         "properties": {
             "Name": {"title": {}},
@@ -33,21 +51,25 @@ def create_user_database(user_id):
             "File Type": {"rich_text": {}}
         }
     }
-
     response = requests.post(
         "https://api.notion.com/v1/databases",
         headers=NOTION_HEADERS,
         json=payload
     )
     data = response.json()
-    return data.get("id")  # Return the database ID
+    database_id = data.get("id")
+
+    if database_id:
+        # Add user to master database
+        add_to_master_database(user_id, user_name, database_id)
+    return database_id
 
 
 # Upload file to the user's Notion database
-def upload_to_user_database(file_id, file_name, user_id, action_id):
+def upload_to_user_database(file_id, file_name, user_id, user_name, action_id):
     # Create a user-specific database if it doesn't exist
     if user_id not in user_databases:
-        database_id = create_user_database(user_id)
+        database_id = create_user_database(user_id, user_name)
         if not database_id:
             return {"error": "Failed to create user-specific database."}
         user_databases[user_id] = database_id
@@ -76,6 +98,8 @@ def index():
     if request.method == "POST":
         data = request.json
         chat_id = data["message"]["chat"]["id"]
+        user_name = data["message"]["chat"]["username"] or "Unknown"
+
         if "text" in data["message"]:
             text = data["message"]["text"]
 
@@ -117,7 +141,7 @@ def index():
 
             action_id = "upload_file"
 
-            notion_response = upload_to_user_database(file_id, file_name, chat_id, action_id)
+            notion_response = upload_to_user_database(file_id, file_name, chat_id, user_name, action_id)
             response_text = f"Notion Response:\n{json.dumps(notion_response, indent=2)}"
             requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_text})
 
