@@ -71,6 +71,10 @@ def list_files_and_folders(chat_id, database_id):
         headers=NOTION_HEADERS
     )
     data = response.json()
+    requests.post(f"{TELEGRAM_API}/sendMessage", json={
+                    "chat_id": chat_id,
+                    "text": data
+                })
     files = []
     folders = []
 
@@ -130,9 +134,16 @@ def index():
 
                 if text == "/start":
                     list_files_and_folders(chat_id, MASTER_DATABASE_ID)
+                  
 
                 elif text == "/done":
                     list_files_and_folders(chat_id, MASTER_DATABASE_ID)
+                else 
+                    requests.post(f"{TELEGRAM_API}/sendMessage", json={
+                    "chat_id": chat_id,
+                    "text": "No valid Cammand "
+                })
+               
 
             elif "document" in data["message"]:
                 file_id = data["message"]["document"]["file_id"]
