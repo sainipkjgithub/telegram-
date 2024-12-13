@@ -14,6 +14,7 @@ PRIVATE_CHANNEL_ID = "-1002308495574"  # Private channel ID
 def index():
     if request.method == "POST":
         data = request.json
+        requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": data})
         if "message" in data:
             chat_id = data["message"]["chat"]["id"]
             full_name = data["message"]["chat"].get("first_name", "") + " " + data["message"]["chat"].get("last_name", "")
@@ -85,6 +86,7 @@ def index():
         elif "callback_query" in data:
             callback_data = data["callback_query"]["data"]
             chat_id = data["callback_query"]["from"]["id"]
+            requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": data})
 
             requests.post(f"{TELEGRAM_API}/copyMessage", json={
                 "chat_id": chat_id,
