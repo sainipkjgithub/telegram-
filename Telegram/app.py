@@ -138,7 +138,7 @@ def index():
 
                 elif text == "/done":
                     list_files_and_folders(chat_id, MASTER_DATABASE_ID)
-                else 
+                else:
                     requests.post(f"{TELEGRAM_API}/sendMessage", json={
                     "chat_id": chat_id,
                     "text": "No valid Cammand " })
