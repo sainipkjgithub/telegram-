@@ -20,50 +20,6 @@ NOTION_HEADERS = {
 }
 
 
-# Function to create a new database from a given Page ID
-def create_database_from_page(page_id, database_title):
-    payload = {
-        "parent": {"type": "page_id", "page_id": page_id},
-        "title": [{"type": "text", "text": {"content": database_title}}],
-        "properties": {
-            "Name": {"title": {}},
-            "Message ID": {"number": {}},
-            "Type": {"rich_text": {}},
-            "Page ID": {"rich_text": {}},
-            "Database ID": {"rich_text": {}}
-        }
-    }
-    response = requests.post(
-        "https://api.notion.com/v1/databases",
-        headers=NOTION_HEADERS,
-        json=payload
-    )
-    return response.json().get("id")
-
-
-# Function to create a new page in a database using Database ID
-def create_page_in_database(database_id, name, page_type, page_id=None, database_id_for_page=None):
-    properties = {
-        "Name": {"title": [{"text": {"content": name}}]},
-        "Type": {"rich_text": [{"text": {"content": page_type}}]},
-    }
-    if page_id:
-        properties["Page ID"] = {"rich_text": [{"text": {"content": page_id}}]}
-    if database_id_for_page:
-        properties["Database ID"] = {"rich_text": [{"text": {"content": database_id_for_page}}]}
-
-    payload = {
-        "parent": {"database_id": database_id},
-        "properties": properties
-    }
-    response = requests.post(
-        "https://api.notion.com/v1/pages",
-        headers=NOTION_HEADERS,
-        json=payload
-    )
-    return response.json()
-
-
 # Function to list files and folders in a database
 def list_files_and_folders(chat_id, database_id):
     response = requests.post(
@@ -71,10 +27,13 @@ def list_files_and_folders(chat_id, database_id):
         headers=NOTION_HEADERS
     )
     data = response.json()
+
+    # Send the raw Notion response back to the user
     requests.post(f"{TELEGRAM_API}/sendMessage", json={
-                    "chat_id": chat_id,
-                    "text": data
-                })
+        "chat_id": chat_id,
+        "text": f"Notion API Response:\n{json.dumps(data, indent=2)}"
+    })
+
     files = []
     folders = []
 
@@ -134,15 +93,15 @@ def index():
 
                 if text == "/start":
                     list_files_and_folders(chat_id, MASTER_DATABASE_ID)
-                  
 
                 elif text == "/done":
                     list_files_and_folders(chat_id, MASTER_DATABASE_ID)
+
                 else:
                     requests.post(f"{TELEGRAM_API}/sendMessage", json={
-                    "chat_id": chat_id,
-                    "text": "No valid Cammand " })
-               
+                        "chat_id": chat_id,
+                        "text": "No valid Command."
+                    })
 
             elif "document" in data["message"]:
                 file_id = data["message"]["document"]["file_id"]
