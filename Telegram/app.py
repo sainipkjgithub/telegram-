@@ -137,13 +137,17 @@ def index():
                 text = data["message"]["text"]
 
                 if text == "/start":
-                    response_text = "Hello! Use /upload to upload a file and /list to see your uploaded files."
+                    response_text = "Hello! Welcome to Ai File Manager \n You can Upload Your Unlimited Files on This bot. Your Files Are Secure on our Cloud Storage\nPlease Upload A file 🗃️..."
                     requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_text})
 
                 elif text == "/upload":
-                    response_text = "Please send the file you want to upload."
+                    response_text = "Please send the file you want to upload. I will save Your File On Your Cloud Account.\n You can also share multiple Files. "
                     requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_text})
 
+                elif text == "/help":
+                    response_text = "Please use /start to Restart the Bot.\n Please use /upload to Upload a file{You Can also direct send your Files}.\n Please use /list command to See your Uploaded Files. \n If you have any Question or Feedback For this bot Please Feel Free to contact to admin.\n Bot Admin @Aks979 /n .     _Create by_\n       *Mr. Singodiya*"
+                    requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_text})
+                    
                 elif text == "/list":
                     database_id = get_user_from_master(chat_id)
                     if not database_id:
@@ -170,6 +174,12 @@ def index():
                         response_text = "Select a file to download:"
                         requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_text, "reply_markup": keyboard})
 
+                else:
+           
+                  response_text = "🚫NOT A VALID CAMMAND 🚫\n Please use \help to see all valid commands. "
+                    requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_text})
+
+
             elif "document" in data["message"] or "photo" in data["message"] or "video" in data["message"]:
                 if "document" in data["message"]:
                     file_id = data["message"]["document"]["file_id"]
@@ -190,9 +200,9 @@ def index():
                 forward_data = forward_response.json()
                 message_id = forward_data["result"]["message_id"]
 
-                upload_to_user_database(file_name, chat_id, full_name, message_id)
+             #   upload_to_user_database(file_name, chat_id, full_name, message_id)
                 page_id = upload_to_user_database(file_name, chat_id, full_name, message_id)
-                response_text = f"File uploaded successfully! Your File Id is : {page_id}"
+                response_text = f"File uploaded successfully!\n Your File Id is : {page_id}"
                 requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_text})
 
         elif "callback_query" in data:
