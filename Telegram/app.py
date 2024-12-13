@@ -141,8 +141,7 @@ def index():
                 else 
                     requests.post(f"{TELEGRAM_API}/sendMessage", json={
                     "chat_id": chat_id,
-                    "text": "No valid Cammand "
-                })
+                    "text": "No valid Cammand " })
                
 
             elif "document" in data["message"]:
