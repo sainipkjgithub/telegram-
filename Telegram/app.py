@@ -1,24 +1,24 @@
-from flask import Flask, request
+import os
 import requests
-import json
+from flask import Flask, request
 
 app = Flask(__name__)
 
-# Telegram Bot Configuration
-TELEGRAM_TOKEN = "7645816977:AAH6kuSygVwuGhPAlvt_4otirHQhxI9wmYw"
+# Telegram Bot Configuration - Fetching from environment variables
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
-# Notion API Configuration
-NOTION_API_KEY = "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"
-Page_Id = "1597280d4cf580a48094c9959f837f09"
-MASTER_DATABASE_ID = "15a7280d4cf580ceb31ff04a1a6eede3"
+# Notion API Configuration - Fetching from environment variables
+NOTION_API_KEY = os.getenv("NOTION_API_KEY")
+Page_Id = os.getenv("NOTION_PAGE_ID")
+MASTER_DATABASE_ID = os.getenv("NOTION_MASTER_DATABASE_ID")
 NOTION_HEADERS = {
     "Authorization": f"Bearer {NOTION_API_KEY}",
     "Content-Type": "application/json",
     "Notion-Version": "2022-06-28"
 }
 
-PRIVATE_CHANNEL_ID = "-1002308495574"  # Private channel ID
+PRIVATE_CHANNEL_ID = os.getenv("PRIVATE_CHANNEL_ID")  # Private channel ID
 
 
 # Fetch user from master database
@@ -125,6 +125,7 @@ def upload_to_user_database(file_name, user_id, full_name, message_id):
         )
 
     return page_id
+
 @app.route("/", methods=["POST", "GET"])
 def index():
     if request.method == "POST":
@@ -145,7 +146,12 @@ def index():
                     requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_text})
 
                 elif text == "/help":
-                    response_text = "Please use /start to Restart the Bot.\n Please use /upload to Upload a file{You Can also direct send your Files}.\n Please use /list command to See your Uploaded Files. \n If you have any Question or Feedback For this bot Please Feel Free to contact to admin.\n Bot Admin @Aks979 /n .     _Create by_\n       *Mr. Singodiya*"
+                    response_text = """Please use /start to Restart the Bot.
+                    Please use /upload to Upload a file (You can also directly send your Files).
+                    Please use /list to see your uploaded files.
+                    If you have any questions or feedback, feel free to contact the admin.
+                    Bot Admin: @Aks979
+                    Created by: Mr. Singodiya"""
                     requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_text})
                     
                 elif text == "/list":
@@ -175,10 +181,8 @@ def index():
                         requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_text, "reply_markup": keyboard})
 
                 else:
-           
-                  response_text = "🚫NOT A VALID CAMMAND 🚫\n Please use \help to see all valid commands. "
+                    response_text = "🚫NOT A VALID COMMAND 🚫\n Please use /help to see all valid commands."
                     requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_text})
-
 
             elif "document" in data["message"] or "photo" in data["message"] or "video" in data["message"]:
                 if "document" in data["message"]:
@@ -200,7 +204,7 @@ def index():
                 forward_data = forward_response.json()
                 message_id = forward_data["result"]["message_id"]
 
-             #   upload_to_user_database(file_name, chat_id, full_name, message_id)
+                # Upload file to user database
                 page_id = upload_to_user_database(file_name, chat_id, full_name, message_id)
                 response_text = f"File uploaded successfully!\n Your File Id is : {page_id}"
                 requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_text})
