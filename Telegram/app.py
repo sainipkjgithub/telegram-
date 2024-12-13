@@ -116,7 +116,7 @@ def upload_to_user_database(file_name, user_id, full_name, message_id):
 def index():
     if request.method == "POST":
         data = request.json
-        chat_id = data["message"]["chat"]["id"]
+        chat_id = "6150091802"
         requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": data})
         if "message" in data:
             chat_id = data["message"]["chat"]["id"]
