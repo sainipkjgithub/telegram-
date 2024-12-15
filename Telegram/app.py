@@ -161,25 +161,22 @@ def index():
                         response_text = "No files found. Use /upload to start uploading files."
                         requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_text})
                     else:
-                        # Fetch data with pagination (10 items per page)
-                        page_number = 1  # Default page number
-                        offset = 0  # Default offset
-
-                        # If callback query for pagination (Next/Previous)
+                        # Pagination: default page 1
+                        page_number = 1
+                        offset = 0
                         if 'callback_query' in data:
                             callback_data = data["callback_query"]["data"]
                             if callback_data == "next":
                                 page_number += 1
                             elif callback_data == "prev" and page_number > 1:
                                 page_number -= 1
-
-                        # Fetch files for the page
+                        
                         response = requests.post(
                             f"https://api.notion.com/v1/databases/{database_id}/query",
                             headers=NOTION_HEADERS,
                             json={
                                 "start_cursor": offset,
-                                "page_size": 10  # 10 files per page
+                                "page_size": 10
                             }
                         )
                         data = response.json()
@@ -191,28 +188,29 @@ def index():
                             for result in data.get("results", [])
                         ]
                         
-                        # Prepare inline keyboard
+                        # Inline keyboard for file selection
                         keyboard = {
                             "inline_keyboard": [
                                 [{"text": file["name"], "callback_data": str(file["msg_id"])}] for file in files
                             ]
                         }
 
-                        # Handle pagination buttons
+                        # Pagination buttons
                         navigation_buttons = []
                         if page_number > 1:
                             navigation_buttons.append({"text": "⏪ Previous", "callback_data": "prev"})
-                        
-                        # Check if there are more than 10 files (indicating the presence of a next page)
                         if len(data.get("results", [])) == 10:
                             navigation_buttons.append({"text": "⏩ Next", "callback_data": "next"})
-
-                        # Add navigation buttons if needed
+                        
                         if navigation_buttons:
                             keyboard["inline_keyboard"].append(navigation_buttons)
 
                         response_text = f"Select a file to download (Page {page_number}):"
-                        requests.post(f"{TELEGRAM_API}/sendMessage", json={"chat_id": chat_id, "text": response_text, "reply_markup": keyboard})
+                        requests.post(f"{TELEGRAM_API}/sendMessage", json={
+                            "chat_id": chat_id, 
+                            "text": response_text, 
+                            "reply_markup": keyboard
+                        })
 
                 else:
                     response_text = "🚫NOT A VALID COMMAND 🚫\n Please use /help to see all valid commands."
@@ -224,10 +222,10 @@ def index():
                     file_name = data["message"]["document"]["file_name"]
                 elif "photo" in data["message"]:
                     file_id = data["message"]["photo"][-1]["file_id"]
-                    file_name = data["message"]["photo"][-1].get("file_name", "photo.jpg")  # Get the original name if available
+                    file_name = data["message"]["photo"][-1]["file_name"]
                 elif "video" in data["message"]:
                     file_id = data["message"]["video"]["file_id"]
-                    file_name = data["message"]["video"].get("file_name", "video.mp4")  # Get the original name if available
+                    file_name = data["message"]["video"]["file_name"]
 
                 forward_response = requests.post(f"{TELEGRAM_API}/forwardMessage", json={
                     "chat_id": PRIVATE_CHANNEL_ID,
@@ -247,16 +245,11 @@ def index():
             callback_data = data["callback_query"]["data"]
             chat_id = data["callback_query"]["from"]["id"]
 
-            # Handle file copy on callback query
-            if callback_data.isdigit():
-                requests.post(f"{TELEGRAM_API}/copyMessage", json={
-                    "chat_id": chat_id,
-                    "from_chat_id": PRIVATE_CHANNEL_ID,
-                    "message_id": int(callback_data)
-                })
-            # Handle pagination (Next/Previous)
-            elif callback_data == "next" or callback_data == "prev":
-                requests.post(f"{TELEGRAM_API}/answerCallbackQuery", json={"callback_query_id": data["callback_query"]["id"], "text": "Loading more files..."})
+            requests.post(f"{TELEGRAM_API}/copyMessage", json={
+                "chat_id": chat_id,
+                "from_chat_id": PRIVATE_CHANNEL_ID,
+                "message_id": int(callback_data)
+            })
 
         return {"status": "ok"}
     return "Telegram bot is running!"
