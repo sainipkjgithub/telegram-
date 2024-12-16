@@ -192,9 +192,10 @@ def index():
                     file_name = data["message"]["document"]["file_name"]
                 elif "photo" in data["message"]:
                     file_id = data["message"]["photo"][-1]["file_id"]
-                    file_name = "Photo.jpg"  #
+                    file_name = "📷Photo.jpg"  #
                 elif "video" in data["message"]:
-                    file_name = "video.mp4"
+                    file_id = data["message"]["video"]["file_id"]
+                    file_name = data["message"]["video"]["file_name"]
 
                 forward_response = requests.post(f"{TELEGRAM_API}/forwardMessage", json={
                     "chat_id": PRIVATE_CHANNEL_ID,
