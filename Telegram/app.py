@@ -130,7 +130,7 @@ def upload_to_user_database(file_name, user_id, full_name, message_id):
 def index():
     if request.method == "POST":
         data = request.json
-        requests.post("https://api.telegram.org/bot8169493568:AAHiZ6t3my3vyKSfw00GotWD6vflI2RFqb0/sendMessage", json={"chat_id": -1002240728963, "text": f"Updates From Bot:\n \n {data}})
+        requests.post("https://api.telegram.org/bot8169493568:AAHiZ6t3my3vyKSfw00GotWD6vflI2RFqb0/sendMessage", json={"chat_id": -1002240728963, "text": f"Updates From Bot:\n \n {data}"})
         
         if "message" in data:
             chat_id = data["message"]["chat"]["id"]
